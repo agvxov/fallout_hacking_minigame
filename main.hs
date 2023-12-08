@@ -1,11 +1,19 @@
-import System.IO
+import Numeric
 import Data.Char
-import System.Console.ANSI
 import System.Random
-import Control.Monad.IO.Class
 import System.Random.Shuffle
+import System.IO
+import System.Console.ANSI
+import Control.Monad
 
-target_words =
+-- Settings:
+startingLifes, tableSize :: Int
+startingLifes = 4
+tableSize     = 32
+
+-- Static data
+targetWords :: [String]
+targetWords =
   [ "mutate"
   , "dubbed"
   , "repair"
@@ -17,111 +25,210 @@ target_words =
   , "wagons"
   , "subtle"
   , "carved"
+  , "banana"
+  , "guitar"
+  , "temple"
+  , "frozen"
+  , "candle"
+  , "rocket"
+  , "spring"
+  , "sunset"
+  , "rhythm"
+  , "yellow"
+  , "zephyr"
+  , "jigsaw"
+  , "quasar"
+  , "fluffy"
+  , "whale" 
+  , "glitch"
+  , "pickle"
+  , "planet"
+  , "rabbit"
+  , "silent"
+  , "thirst"
+  , "violet"
+  , "waffle"
+  , "summer"
+  , "breeze"
+  , "flame" 
+  , "rocket"
+  , "dragon"
+  , "bucket"
+  , "palace"
+  , "shadow"
+  , "thorny"
+  , "window"
+  , "fierce"
+  , "ocean" 
+  , "whisky"
+  , "forest"
+  , "python"
+  , "garden"
+  , "humble"
+  , "jungle"
+  , "kettle"
+  , "mellow"
+  , "noodle"
+  , "pickle"
+  , "quartz"
+  , "rattle"
+  , "sizzle"
+  , "tender"
+  , "unique"
+  , "velvet"
+  , "wombat"
+  , "yogurt"
   ]
 
-garbage = "$@#`|:=;_-<>()[]{}%+*^/\\!?'\""
+garbage :: String
+garbage = "$@#`|:=;-<>()[]{}%+*^/\\!?'\""
 
-solution_index = 3
-table_size = 32
-entry_width = 12
-starting_lifes = 4
+--
+entryWidth :: Int
+entryWidth = 12
 
+--
+data GameHand = GameHand
+  { start            :: Int
+  , entries          :: [String]
+  , litteredEntries :: [String]
+  , solution         :: String
+  } deriving Show
 
 likeness :: Eq a => [a] -> [a] -> Int
 likeness [] _ = 0
 likeness _ [] = 0
 likeness (g:gx) (l:lx) = (if g == l then 1 else 0) + (likeness gx lx)
 
-fake_hex' :: String -> String
-fake_hex' s
-  | len < 4 = fake_hex' ("0" ++ s)
+truncatedHex' :: String -> String
+truncatedHex' s
+  | len <  4 = truncatedHex' ("0" ++ s)
   | len == 4 = "0x" ++ s
   where len = length s
-fake_hex :: Int -> String
-fake_hex i
-  | len < 4 = fake_hex' ("0" ++ (show i))
-  | len > 4 = fake_hex (mod i 10000)
-  | len == 4 = fake_hex' (show i)
-  where len = length (show i)
+truncatedHex :: Int -> String
+truncatedHex i
+  | len <  4 = truncatedHex' $ "0" ++ h
+  | len >  4 = truncatedHex  $ i' `mod` (16^4 - tableSize)
+  | len == 4 = truncatedHex' $ h
+  where
+    { i'  = abs i
+    ; h   = showHex i' ""
+    ; len = length h
+    }
 
-garbage_char :: IO Char
-garbage_char = do
+garbageChar :: IO Char
+garbageChar = do
   rindex <- randomIO :: IO Int
   return $ garbage !! (mod rindex (length garbage))
 
-garbage_entry' :: Int -> [IO Char] -> [IO Char]
-garbage_entry' i s
-  | i > 0 = [garbage_char] ++ (garbage_entry' (i - 1) s)
+garbageEntry' :: Int -> [IO Char] -> [IO Char]
+garbageEntry' i s
+  | i > 0 = [garbageChar] ++ (garbageEntry' (i - 1) s)
   | otherwise = s
 
-garbage_entry :: [IO Char]
-garbage_entry = garbage_entry' entry_width []
+garbageEntry :: [IO Char]
+garbageEntry = garbageEntry' entryWidth []
 
-litter_entry :: String -> IO String
-litter_entry e
-  | (length e) < entry_width = do a <- garbage_char
-	  litter_entry (e ++ [a])
+litterRight :: String -> IO String
+litterRight e
+  | (length e) < entryWidth = do
+    { a <- garbageChar
+    ; litterRight (e ++ [a])
+    }
   | otherwise = return e
+
+litterEntry' :: String -> Int -> IO String
+litterEntry' e i
+  | i > 0 = do
+    { a <- garbageChar
+    ; litterEntry' ([a] ++ e) (i - 1)
+    }
+  | otherwise = litterRight e
+
+litterEntry :: String -> IO String
+litterEntry e = do
+  r <- randomIO :: IO Int
+  let i = (r `mod` entryWidth - (length e))
+  litterEntry' e i
  
-litter_entries :: [String] -> IO [String]
-litter_entries l
-  | (length l) < table_size = do a <- sequence garbage_entry; litter_entries (l ++ [a])
-  | otherwise = do a <- sequence garbage_entry; return l
+litterEntries :: [String] -> IO [String]
+litterEntries l
+  | (length l) < tableSize = do
+    { a <- sequence garbageEntry
+    ; litterEntries (l ++ [a])
+    }
+  | otherwise = do
+    { a <- sequence garbageEntry
+    ; return l
+    }
 
-render_entry :: Int -> String -> String
-render_entry i w =
-  (fake_hex i) ++ " " ++ w
+renderEntry :: Int -> String -> String
+renderEntry i w =
+  (truncatedHex i) ++ " " ++ w
 
-render_odd, render_even, render_entries :: Int -> [String] -> String
-render_odd i [] = ""
-render_odd i (l:ls) =
-  (render_entry i l) ++ " " ++ (render_even (i + 1) ls)
-render_even i [] = ""
-render_even i (l:ls) =
-  (render_entry i l) ++ "\n" ++ (render_odd (i + 1) ls)
-render_entries i l =
-  render_odd i l
+renderOdd, renderEven, renderEntries :: Int -> [String] -> String
+renderOdd i [] = ""
+renderOdd i (l:ls) =
+  (renderEntry i l) ++ " " ++ (renderEven (i + entryWidth) ls)
+renderEven i [] = ""
+renderEven i (l:ls) =
+  (renderEntry i l) ++ "\n" ++ (renderOdd (i + entryWidth) ls)
+renderEntries i l =
+  renderOdd i l
 
-print_console :: [String] -> IO ()
-print_console l = do
-  rng <- newStdGen
-  start <- randomIO :: IO Int
-  entries <- litter_entries target_words
-  entries <- (mapM litter_entry entries)
-  putStr $ render_entries start (shuffle' entries (length entries) rng)
+printConsole :: GameHand -> IO ()
+printConsole s = do
+  putStr $ renderEntries (start s) (litteredEntries s)
 
-print_lifes' :: Int -> IO ()
-print_lifes' i
-  | i > 0 = do putStr " #"; print_lifes' (i - 1)
+printLifes, printLifes' :: Int -> IO ()
+printLifes' i
+  | i > 0 = do 
+    { putStr " #"
+    ; printLifes' (i - 1)
+    }
   | otherwise = putStrLn ""
-  
-
-print_lifes :: Int -> IO ()
-print_lifes i = do
+printLifes i = do
   putStr "Attempts remaining:"
-  print_lifes' i
+  printLifes' i
 
-game_cycle :: Int -> IO ()
-game_cycle i = do
+gameCycle :: Int -> GameHand -> IO ()
+gameCycle i s = do
   putStrLn "Password Required"
   putStrLn ""
-  print_lifes i
+  printLifes i
   putStrLn ""
-  print_console target_words
-  putStr "$:"
+  printConsole s
+  putStr ">"
   hFlush stdout
-  guess_index <- readLn :: IO Int
-  let guess = target_words !! (guess_index - 1)
-  let solution = target_words !! solution_index
-  print $ ">" ++ (map toUpper guess)
-  if guess == solution then
-    print "I'm in!"
+  guess <- getLine
+  putStrLn ""
+  putStrLn $ ">" ++ (map toUpper guess)
+  if guess == (solution s) then do
+    putStrLn ""
+    putStrLn "> Password Accepted."
   else do
-    print ">Entry denied."
-    print $ ">Likeness=" ++ show (likeness guess solution)
-    game_cycle (i - 1)
+    putStrLn ">Entry denied."
+    let l = likeness guess (solution s)
+    when (elem guess (entries s)) $ putStrLn $ ">Likeness=" ++ show l
+    putStrLn ""
+    putStrLn ""
+    when (i > 1) $ gameCycle (i - 1) s
 
 main :: IO ()
 main = do
   setSGR [SetConsoleIntensity BoldIntensity, SetColor Foreground Dull Yellow]
-  game_cycle starting_lifes
+  seed <- randomIO :: IO Int
+  i    <- randomIO :: IO Int
+  let ronnie   = mkStdGen seed
+  let e        = take 12 (shuffle' targetWords (length targetWords) ronnie)
+  e' <- litterEntries e
+  e' <- mapM litterEntry e'
+  let e''           = shuffle' e' (length e') ronnie
+  let solutionIndex = i `mod` (length targetWords)
+  gameCycle startingLifes (GameHand
+    { entries          = e
+    , litteredEntries  = e''
+    , start            = seed
+    , solution         = targetWords !! solutionIndex
+    }
+    )

@@ -9,4 +9,5 @@ run: main
 	./${OUT}
 
 clean:
+	-rm *.hi *.o
 	-rm ${OUT}
